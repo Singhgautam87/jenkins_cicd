@@ -6,7 +6,7 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    openjdk-17-jre-headless \
+    openjdk-21-jre-headless \
  && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

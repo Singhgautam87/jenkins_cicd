@@ -34,6 +34,7 @@ pipeline {
                     def runDateArg = runDate ? "--run-date ${runDate}" : ""
                     sh """
                         docker run --rm \\
+                          -v zoomcar-ivy-cache:/root/.ivy2 \\
                           -v "\$PWD":/app \\
                           -w /app \\
                           ${IMAGE_NAME} \\
@@ -48,6 +49,7 @@ pipeline {
                 script {
                     sh """
                         docker run --rm \\
+                          -v zoomcar-ivy-cache:/root/.ivy2 \\
                           -v "\$PWD":/app \\
                           -w /app \\
                           ${IMAGE_NAME} \\

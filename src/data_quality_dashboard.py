@@ -27,7 +27,7 @@ def run_deequ_checks(spark) -> dict:
     Returns a dict with check results for easy reporting.
     """
     from pydeequ.checks import Check, CheckLevel
-    from pydeequ.verification import VerificationSuite
+    from pydeequ.verification import VerificationSuite, VerificationResult
 
     results: dict[str, dict] = {}
 

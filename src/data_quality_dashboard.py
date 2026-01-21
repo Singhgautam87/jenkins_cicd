@@ -164,7 +164,13 @@ def generate_html_dashboard(dq_results: dict, summary_tables: dict) -> None:
     else:
         for table_name, result in dq_results.items():
             parts.append(f"<h3>Table: {table_name}</h3>")
-            check_results = result.get("checkResults", {})
+            # pydeequ may return either a dict or a list; normalize to dict
+            if isinstance(result, list) and result:
+                normalized = result[0]
+            else:
+                normalized = result
+
+            check_results = normalized.get("checkResults", {}) if isinstance(normalized, dict) else {}
             rows = []
             for check_name, details in check_results.items():
                 status = details.get("status")

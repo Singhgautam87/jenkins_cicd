@@ -56,7 +56,7 @@ def run_deequ_checks(spark) -> dict:
             .addCheck(check)
             .run()
         )
-        results["bookings"] = verification_result.checkResultsAsJson()
+        results["bookings"] = VerificationResult.checkResultsAsJson(spark, verification_result)
 
     # --- Customers DQ checks ---
     try:
@@ -79,7 +79,7 @@ def run_deequ_checks(spark) -> dict:
             .addCheck(check)
             .run()
         )
-        results["customers"] = verification_result.checkResultsAsJson()
+        results["customers"] = VerificationResult.checkResultsAsJson(spark, verification_result)
 
     return results
 

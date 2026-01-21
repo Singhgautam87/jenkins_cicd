@@ -7,6 +7,8 @@ pipeline {
 
     environment {
         IMAGE_NAME = "zoomcar-etl"
+        DOCKER_MEMORY = "4g"
+        DOCKER_CPUS = "2"
     }
 
     stages {
@@ -33,9 +35,11 @@ pipeline {
                     }
                     def runDateArg = runDate ? "--run-date ${runDate}" : ""
                     
-                    timeout(time: 15, unit: 'MINUTES') {
+                    timeout(time: 20, unit: 'MINUTES') {
                         sh """
                             docker run --rm \\
+                              --memory=${DOCKER_MEMORY} \\
+                              --cpus=${DOCKER_CPUS} \\
                               -v zoomcar-ivy-cache:/root/.ivy2 \\
                               -v "\$PWD":/app \\
                               -w /app \\
@@ -51,24 +55,28 @@ pipeline {
             steps {
                 script {
                     try {
-                        timeout(time: 10, unit: 'MINUTES') {
+                        timeout(time: 20, unit: 'MINUTES') {
                             echo "Starting Data Quality Dashboard generation..."
                             sh """
                                 docker run --rm \\
+                                  --memory=${DOCKER_MEMORY} \\
+                                  --cpus=${DOCKER_CPUS} \\
                                   -v zoomcar-ivy-cache:/root/.ivy2 \\
                                   -v "\$PWD":/app \\
                                   -w /app \\
                                   ${IMAGE_NAME} \\
                                   python -m src.data_quality_dashboard
                             """
-                            echo "Dashboard generation completed successfully"
+                            echo "✅ Dashboard generation completed successfully"
                         }
                     } catch (org.jenkinsci.plugins.workflow.steps.FlowInterruptedException e) {
-                        echo "WARNING: Dashboard generation timed out after 10 minutes"
+                        echo "⚠️ WARNING: Dashboard generation timed out after 20 minutes"
+                        echo "This may indicate performance issues. Check logs for bottlenecks."
                         echo "Continuing with pipeline..."
                         currentBuild.result = 'UNSTABLE'
                     } catch (Exception e) {
-                        echo "ERROR: Dashboard generation failed - ${e.message}"
+                        echo "❌ ERROR: Dashboard generation failed - ${e.message}"
+                        echo "Stack trace: ${e}"
                         echo "Continuing with pipeline..."
                         currentBuild.result = 'UNSTABLE'
                     }
@@ -77,20 +85,32 @@ pipeline {
         }
 
         stage('Archive Results') {
-            when {
-                expression { fileExists('data/final') }
-            }
             steps {
                 script {
                     def artifacts = []
+                    
                     if (fileExists('data/final')) {
+                        echo "Found final data directory"
                         artifacts << 'data/final/**/*'
                     }
+                    
                     if (fileExists('reports/data_quality_dashboard.html')) {
+                        echo "Found dashboard report"
                         artifacts << 'reports/data_quality_dashboard.html'
                     }
+                    
+                    if (fileExists('logs')) {
+                        echo "Found logs directory"
+                        artifacts << 'logs/**/*.log'
+                    }
+                    
                     if (artifacts) {
-                        archiveArtifacts artifacts: artifacts.join(','), fingerprint: true, allowEmptyArchive: true
+                        archiveArtifacts artifacts: artifacts.join(','), 
+                                       fingerprint: true, 
+                                       allowEmptyArchive: true,
+                                       onlyIfSuccessful: false
+                    } else {
+                        echo "⚠️ No artifacts found to archive"
                     }
                 }
             }
@@ -100,14 +120,19 @@ pipeline {
     post {
         success {
             echo "✅ Pipeline completed successfully!"
+            echo "All stages executed without errors"
         }
         unstable {
-            echo "⚠️ Pipeline completed with warnings (dashboard may have failed)"
+            echo "⚠️ Pipeline completed with warnings"
+            echo "Dashboard generation may have failed or timed out"
+            echo "Check the logs for more details"
         }
         failure {
             echo "❌ Pipeline failed!"
+            echo "Check the stage logs to identify the issue"
         }
         always {
+            echo "Cleaning up workspace..."
             cleanWs()
         }
     }

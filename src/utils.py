@@ -64,5 +64,11 @@ def parse_run_date(run_date_str: Optional[str]) -> datetime:
     """
     if not run_date_str:
         return datetime.today()
-    return datetime.strptime(run_date_str, "%Y-%m-%d")
+
+    clean = run_date_str.strip()
+    # Handle inputs like "RUN_DATE=2026-01-01"
+    if "=" in clean:
+        clean = clean.split("=", 1)[1].strip()
+
+    return datetime.strptime(clean, "%Y-%m-%d")
 

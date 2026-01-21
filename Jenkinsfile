@@ -27,7 +27,11 @@ pipeline {
         stage('Run ETL') {
             steps {
                 script {
-                    def runDateArg = params.RUN_DATE ? "--run-date ${params.RUN_DATE}" : ""
+                    def runDate = params.RUN_DATE?.trim()
+                    if (runDate?.contains("=")) {
+                        runDate = runDate.tokenize("=").last().trim()
+                    }
+                    def runDateArg = runDate ? "--run-date ${runDate}" : ""
                     sh """
                         docker run --rm \\
                           -v "\$PWD":/app \\

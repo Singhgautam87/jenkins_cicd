@@ -32,14 +32,17 @@ pipeline {
                         runDate = runDate.tokenize("=").last().trim()
                     }
                     def runDateArg = runDate ? "--run-date ${runDate}" : ""
-                    sh """
-                        docker run --rm \\
-                          -v zoomcar-ivy-cache:/root/.ivy2 \\
-                          -v "\$PWD":/app \\
-                          -w /app \\
-                          ${IMAGE_NAME} \\
-                          python -m src.main_pipeline ${runDateArg}
-                    """
+                    
+                    timeout(time: 15, unit: 'MINUTES') {
+                        sh """
+                            docker run --rm \\
+                              -v zoomcar-ivy-cache:/root/.ivy2 \\
+                              -v "\$PWD":/app \\
+                              -w /app \\
+                              ${IMAGE_NAME} \\
+                              python -m src.main_pipeline ${runDateArg}
+                        """
+                    }
                 }
             }
         }
@@ -47,14 +50,28 @@ pipeline {
         stage('Data Quality & Dashboard') {
             steps {
                 script {
-                    sh """
-                        docker run --rm \\
-                          -v zoomcar-ivy-cache:/root/.ivy2 \\
-                          -v "\$PWD":/app \\
-                          -w /app \\
-                          ${IMAGE_NAME} \\
-                          python -m src.data_quality_dashboard
-                    """
+                    try {
+                        timeout(time: 10, unit: 'MINUTES') {
+                            echo "Starting Data Quality Dashboard generation..."
+                            sh """
+                                docker run --rm \\
+                                  -v zoomcar-ivy-cache:/root/.ivy2 \\
+                                  -v "\$PWD":/app \\
+                                  -w /app \\
+                                  ${IMAGE_NAME} \\
+                                  python -m src.data_quality_dashboard
+                            """
+                            echo "Dashboard generation completed successfully"
+                        }
+                    } catch (org.jenkinsci.plugins.workflow.steps.FlowInterruptedException e) {
+                        echo "WARNING: Dashboard generation timed out after 10 minutes"
+                        echo "Continuing with pipeline..."
+                        currentBuild.result = 'UNSTABLE'
+                    } catch (Exception e) {
+                        echo "ERROR: Dashboard generation failed - ${e.message}"
+                        echo "Continuing with pipeline..."
+                        currentBuild.result = 'UNSTABLE'
+                    }
                 }
             }
         }
@@ -73,7 +90,7 @@ pipeline {
                         artifacts << 'reports/data_quality_dashboard.html'
                     }
                     if (artifacts) {
-                        archiveArtifacts artifacts: artifacts.join(','), fingerprint: true
+                        archiveArtifacts artifacts: artifacts.join(','), fingerprint: true, allowEmptyArchive: true
                     }
                 }
             }
@@ -81,9 +98,17 @@ pipeline {
     }
 
     post {
+        success {
+            echo "✅ Pipeline completed successfully!"
+        }
+        unstable {
+            echo "⚠️ Pipeline completed with warnings (dashboard may have failed)"
+        }
+        failure {
+            echo "❌ Pipeline failed!"
+        }
         always {
             cleanWs()
         }
     }
 }
-

@@ -33,7 +33,7 @@ pipeline {
                           -v "\$PWD":/app \\
                           -w /app \\
                           ${IMAGE_NAME} \\
-                          python src/main_pipeline.py ${runDateArg}
+                          python -m src.main_pipeline ${runDateArg}
                     """
                 }
             }
@@ -47,7 +47,7 @@ pipeline {
                           -v "\$PWD":/app \\
                           -w /app \\
                           ${IMAGE_NAME} \\
-                          python src/data_quality_dashboard.py
+                          python -m src.data_quality_dashboard
                     """
                 }
             }

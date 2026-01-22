@@ -26,7 +26,7 @@ SPARK_MASTER = os.getenv("SPARK_MASTER", "local[*]")
 SPARK_APP_NAME = os.getenv("SPARK_APP_NAME", "ZoomCar-ETL")
 
 # Kafka Configuration
-KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
 KAFKA_TOPIC_RAW_EVENTS = os.getenv("KAFKA_TOPIC_RAW_EVENTS", "zoomcar-raw-events")
 KAFKA_CONSUMER_GROUP = os.getenv("KAFKA_CONSUMER_GROUP", "zoomcar-etl-group")
 KAFKA_AUTO_OFFSET_RESET = os.getenv("KAFKA_AUTO_OFFSET_RESET", "earliest")

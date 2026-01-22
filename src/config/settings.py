@@ -55,9 +55,9 @@ KAFKA_PRODUCER_CONFIG = {
     "key_serializer": "string",
     "acks": "all",  # Wait for all replicas
     "retries": 3,
-    "max_in_flight_requests_per_connection": 1,
-    "compression_type": "snappy",
+    "max_in_flight_requests_per_connection": 1
 }
+    
 
 # Kafka Consumer Settings
 KAFKA_CONSUMER_CONFIG = {

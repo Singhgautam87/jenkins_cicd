@@ -84,34 +84,34 @@ def spark_to_postgres(df, table_name: str):
     # pandas_df = pandas_df.rename(columns=db_cols)
     
     # Direct write with proper column handling
-    with engine.connect() as conn:
-        for _, row in pandas_df.iterrows():
+        with engine.connect() as conn:
+            for _, row in pandas_df.iterrows():
             row_dict = {k: (None if pd.isna(v) else v) for k, v in row.to_dict().items()}
             
             # Make sure booking_date exists
-            if 'booking_date' not in row_dict:
+                if 'booking_date' not in row_dict:
                 print(f"⚠️ Warning: booking_date missing in row: {row_dict}")
                 continue
                 
-            conn.execute(text("""
-                INSERT INTO bookings (
-                    booking_id, customer_id, booking_date, booking_status,
-                    start_time, end_time, booking_duration_minutes,
-                    car_type, pickup_city
-                ) VALUES (
-                    :booking_id, :customer_id, :booking_date, :booking_status,
-                    :start_time, :end_time, :booking_duration_minutes,
-                    :car_type, :pickup_city
-                )
-                ON CONFLICT (booking_id) DO UPDATE SET
-                    customer_id = EXCLUDED.customer_id,
-                    booking_status = EXCLUDED.booking_status,
-                    start_time = EXCLUDED.start_time,
-                    end_time = EXCLUDED.end_time,
-                    booking_duration_minutes = EXCLUDED.booking_duration_minutes,
-                    updated_at = CURRENT_TIMESTAMP
-            """), row_dict)
-        conn.commit()
+                conn.execute(text("""
+                    INSERT INTO bookings (
+                        booking_id, customer_id, booking_date, booking_status,
+                        start_time, end_time, booking_duration_minutes,
+                        car_type, pickup_city
+                    ) VALUES (
+                        :booking_id, :customer_id, :booking_date, :booking_status,
+                        :start_time, :end_time, :booking_duration_minutes,
+                        :car_type, :pickup_city
+                    )
+                    ON CONFLICT (booking_id) DO UPDATE SET
+                        customer_id = EXCLUDED.customer_id,
+                        booking_status = EXCLUDED.booking_status,
+                        start_time = EXCLUDED.start_time,
+                        end_time = EXCLUDED.end_time,
+                        booking_duration_minutes = EXCLUDED.booking_duration_minutes,
+                        updated_at = CURRENT_TIMESTAMP
+                """), row_dict)
+            conn.commit()
         
         # Upsert using ON CONFLICT
         with engine.connect() as conn:

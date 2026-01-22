@@ -1,161 +1,286 @@
-## Zoom Car Data Processing Pipeline (PySpark + Docker + Jenkins)
+# Zoom Car Real-time Data Pipeline
 
-This repo simulates a **Zoom Car**-style data engineering pipeline, but instead of Databricks it uses:
+[![Python](https://img.shields.io/badge/Python-3.11-blue.svg)](https://www.python.org/)
+[![Spark](https://img.shields.io/badge/Spark-3.3-orange.svg)](https://spark.apache.org/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-blue.svg)](https://www.postgresql.org/)
+[![Kafka](https://img.shields.io/badge/Kafka-7.5.0-black.svg)](https://kafka.apache.org/)
 
-- **PySpark (local mode)** inside **Docker**
-- **Jenkins Declarative Pipeline** for full automation
-- **Single daily JSON file** as the source (bookings + customers together)
+Industry-standard real-time data processing pipeline with Kafka, Spark, and PostgreSQL.
 
-Jenkins is responsible for **everything**:
+## 🏗️ Architecture
 
-- Building the Docker image
-- Running the PySpark ETL with a given date
-- Producing final Parquet tables
-- Cleaning the Jenkins workspace at the end (no manual cleanup)
+```
+JSON Events → Kafka → Spark (PySpark) → PostgreSQL → Dashboard
+```
 
----
+### Component Details
 
-## 1. Data Model (Single JSON File)
+- **Kafka**: Real-time event streaming (topic: `zoomcar-raw-events`)
+- **Spark**: Distributed data processing and transformation
+- **PostgreSQL**: ACID-compliant database for final storage
+- **Jenkins**: Full CI/CD automation
+- **Docker Compose**: Infrastructure orchestration
 
-Daily data lands in `data/raw/` as a single JSON file:
+## ✨ Features
 
-- **Pattern**: `zoom_car_events_yyyymmdd.json`
-- **Example**: `zoom_car_events_20260101.json`
+- ✅ **Real-time Streaming**: Kafka-based event ingestion
+- ✅ **Distributed Processing**: Apache Spark for scalable ETL
+- ✅ **ACID Database**: PostgreSQL for reliable data storage
+- ✅ **Data Quality**: Deequ-based validation and checks
+- ✅ **CI/CD**: Fully automated Jenkins pipeline
+- ✅ **Configuration-Driven**: All dynamic values in config files
+- ✅ **Industry Standards**: Logging, error handling, testing
 
-Each JSON record contains **both booking and customer fields**:
+## 🚀 Quick Start
 
-- **Booking fields**: `booking_id`, `customer_id`, `start_time`, `end_time`, `booking_status`, `booking_date`, `car_type`, `pickup_city`
-- **Customer fields**: `customer_name`, `email`, `phone`, `customer_status`, `signup_date`
+### Prerequisites
 
----
+- Docker & Docker Compose
+- Python 3.11+
+- Jenkins (for CI/CD)
 
-## 2. Processing Steps (PySpark Scripts)
-
-All logic lives in `src/` and runs inside Docker.
-
-- **`main_pipeline.py`**
-  - Entry point called by Jenkins / Docker.
-  - Accepts `--run-date` (format `YYYY-MM-DD`). If empty → uses **today**.
-  - Figures out the correct raw JSON filename and orchestrates steps.
-
-- **`process_data.py`**
-  - Reads the daily JSON from `data/raw/`.
-  - **Validations & Cleaning**:
-    - Drops records with null `booking_id` / `customer_id`.
-    - Validates `booking_date` and `signup_date` formats.
-    - Enforces valid booking statuses: `['created', 'in_progress', 'completed', 'cancelled']`.
-    - Validates email with a regex.
-    - Standardizes `customer_status` values (e.g. `ACTIVE`, `active`, `Active` → `ACTIVE`).
-  - Writes **staging Parquet tables**:
-    - `data/staging/bookings`
-    - `data/staging/customers`
-
-- **`transform_merge.py`**
-  - **Transformations**:
-    - Parses `start_time` and `end_time`.
-    - Calculates `booking_duration_minutes`.
-    - Normalizes phone numbers to `+91XXXXXXXXXX` style (for Indian numbers).
-    - Calculates `customer_tenure_days` using `signup_date` and current date.
-  - **Merge / Upsert logic (Parquet-based, Databricks-like)**:
-    - **Bookings**
-      - If `booking_id` already exists → **update** with the latest record.
-      - If new `booking_id` → **insert**.
-      - If `booking_status == 'cancelled'` → **delete** that booking.
-      - Final table: `data/final/bookings`
-    - **Customers**
-      - Upsert on `customer_id` (no deletes here).
-      - Final table: `data/final/customers`
-
----
-
-## 3. Docker Setup
-
-- **`Dockerfile`**
-  - Uses `python:3.11-slim`.
-  - Installs `pyspark` and dependencies from `requirements.txt`.
-  - Default command: runs `src/main_pipeline.py` (you can override in Jenkins).
-
-- **Local test (optional)**:
+### 1. Clone Repository
 
 ```bash
-docker build -t zoomcar-etl .
-docker run --rm -v %cd%:/app zoomcar-etl python src/main_pipeline.py --run-date 2026-01-01
+git clone <repo-url>
+cd my_jenkins_pipeline
 ```
 
-> On Windows PowerShell you may need: `-v ${PWD}:/app` or run from Git Bash with `$(pwd)`.
+### 2. Setup Environment
 
----
+```bash
+cp .env.example .env
+# Edit .env with your configuration
+```
 
-## 4. Jenkins CI/CD Pipeline (Full Automation)
+### 3. Start Infrastructure
 
-The **`Jenkinsfile`** defines a declarative pipeline that:
+```bash
+make docker-up
+# Or manually:
+docker-compose up -d
+```
 
-- Has a parameter **`RUN_DATE`** (`YYYY-MM-DD`). If left empty, the pipeline uses today’s date.
-- **Stages**:
-  1. **Checkout**: Gets this repo.
-  2. **Build Docker Image**: Builds `zoomcar-etl`.
-  3. **Run ETL**: Runs the Docker container with `RUN_DATE`.
-  4. (Optional) Archive output Parquet files as build artifacts.
+This starts:
+- **Zookeeper** (port 2181)
+- **Kafka** (port 9092)
+- **PostgreSQL** (port 5432) - Database `zoomcar_db` is created automatically
+- **PgAdmin** (port 5050) - Database UI
 
-- **Post Actions**:
-  - Uses `cleanWs()` so that **Jenkins clears the workspace at the end**.
-  - That means code/data are removed from the workspace; on the next run Jenkins checks out fresh code again.
+### 4. Initialize Database Schema
 
----
+The database `zoomcar_db` is created automatically by PostgreSQL container. You just need to create tables:
 
-## 5. Folder Structure
+```bash
+python -m src.config.database
+```
 
-```text
+This creates:
+- `bookings` table
+- `customers` table
+- Indexes for performance
+
+### 5. Send Test Data to Kafka
+
+```bash
+python -m src.kafka.producer data/raw/zoom_car_events_20260101.json
+```
+
+### 6. Run Real-time ETL
+
+```bash
+python -m src.realtime_pipeline --run-date 2026-01-01
+```
+
+## 📋 Jenkins Pipeline
+
+### Real-time Mode (Kafka + PostgreSQL)
+
+1. **Jenkins Job** → **Build with Parameters**:
+   - `PIPELINE_MODE`: `realtime`
+   - `RUN_DATE`: `2026-01-01` (optional)
+
+2. **Pipeline Stages**:
+   - ✅ Checkout code
+   - ✅ Build Docker image
+   - ✅ Start Kafka + PostgreSQL
+   - ✅ **Initialize database schema** (creates tables automatically)
+   - ✅ Send test data to Kafka
+   - ✅ Run real-time ETL (Kafka → Spark → PostgreSQL)
+   - ✅ Generate dashboard
+   - ✅ Archive results
+   - ✅ Clean workspace
+
+### Batch Mode (File-based)
+
+1. **Jenkins Job** → **Build with Parameters**:
+   - `PIPELINE_MODE`: `batch`
+   - `RUN_DATE`: `2026-01-01`
+
+2. Uses file-based processing (Parquet workflow)
+
+## 🗄️ Database Setup
+
+### Automatic Database Creation
+
+PostgreSQL container automatically creates the database `zoomcar_db` when it starts (via `POSTGRES_DB` environment variable in docker-compose.yml).
+
+### Schema Initialization
+
+Run this to create tables and indexes:
+
+```bash
+python -m src.config.database
+```
+
+Or it's done automatically in:
+- Jenkins pipeline (real-time mode)
+- Real-time ETL pipeline (before processing)
+
+### Database Schema
+
+**Bookings Table:**
+- Primary Key: `booking_id`
+- Foreign Key: `customer_id`
+- Indexes: `customer_id`, `booking_status`
+
+**Customers Table:**
+- Primary Key: `customer_id`
+- Unique: `email`
+- Indexes: `email`
+
+### Access Database
+
+**Via PgAdmin (Web UI):**
+- URL: http://localhost:5050
+- Email: admin@zoomcar.com
+- Password: admin
+
+**Via psql:**
+```bash
+docker-compose exec postgres psql -U zoomcar_user -d zoomcar_db
+```
+
+## 📁 Project Structure
+
+```
 .
-├── Dockerfile
-├── Jenkinsfile
-├── README.md
-├── requirements.txt
-├── data
-│   ├── raw
-│   │   └── zoom_car_events_20260101.json     # sample daily file (bookings + customers)
-│   ├── staging
-│   │   ├── bookings                          # created by Spark
-│   │   └── customers                         # created by Spark
-│   └── final
-│       ├── bookings                          # created by Spark
-│       └── customers                         # created by Spark
-└── src
-    ├── __init__.py
-    ├── config.py
-    ├── utils.py
-    ├── process_data.py
-    ├── transform_merge.py
-    └── main_pipeline.py
+├── src/
+│   ├── config/          # All configuration (dynamic values)
+│   ├── core/            # Core utilities (logging, exceptions)
+│   ├── models/          # Data models (bookings, customers)
+│   ├── kafka/           # Kafka integration
+│   ├── ingestion/       # Real-time ETL
+│   └── utils/           # Utility functions
+├── tests/               # Unit tests
+├── scripts/             # Helper scripts
+├── docker-compose.yml   # Infrastructure
+└── Jenkinsfile          # CI/CD pipeline
 ```
 
+See [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) for detailed structure.
+
+## 🧪 Testing
+
+```bash
+# Install dev dependencies
+make install
+
+# Run tests
+make test
+
+# Check code quality
+make lint
+```
+
+## 🔧 Configuration
+
+All configuration is centralized in `src/config/`:
+
+- **`settings.py`**: Environment variables & app settings
+- **`business_rules.py`**: Business logic constants
+- **`validation_rules.py`**: Data validation rules
+- **`spark_config.py`**: Spark-specific settings
+- **`dq_config.py`**: Data quality configurations
+
+See [CONFIG_GUIDE.md](CONFIG_GUIDE.md) for detailed configuration guide.
+
+### Environment Variables
+
+Create `.env` file:
+
+```bash
+# Kafka
+KAFKA_BOOTSTRAP_SERVERS=localhost:9092
+KAFKA_TOPIC_RAW_EVENTS=zoomcar-raw-events
+
+# PostgreSQL
+POSTGRES_HOST=postgres
+POSTGRES_DB=zoomcar_db
+POSTGRES_USER=zoomcar_user
+POSTGRES_PASSWORD=zoomcar_pass
+
+# Spark
+SPARK_VERSION=3.3
+SPARK_MASTER=local[*]
+```
+
+## 📊 Data Flow
+
+1. **Producer** sends JSON events to Kafka topic `zoomcar-raw-events`
+2. **Consumer** (Spark) reads from Kafka in batches
+3. **Processing**:
+   - Validation & cleaning
+   - Transformations (duration, phone normalization, tenure)
+   - Deduplication
+4. **Storage**: Upsert to PostgreSQL (ON CONFLICT DO UPDATE)
+5. **Dashboard**: Generated from PostgreSQL data
+
+## 🛠️ Development
+
+```bash
+# Format code
+make format
+
+# Run linter
+make lint
+
+# Run tests
+make test
+
+# Clean temporary files
+make clean
+```
+
+## 📚 Documentation
+
+- [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) - Detailed project structure
+- [CONFIG_GUIDE.md](CONFIG_GUIDE.md) - Configuration guide
+- [CONTRIBUTING.md](CONTRIBUTING.md) - Contribution guidelines
+- [CHANGELOG.md](CHANGELOG.md) - Version history
+
+## 🎯 Industry Standards
+
+This project follows industry best practices:
+
+- ✅ **Modular Architecture**: Clear separation of concerns
+- ✅ **Configuration-Driven**: All dynamic values in config
+- ✅ **Centralized Logging**: Structured logging system
+- ✅ **Error Handling**: Custom exceptions & retry mechanisms
+- ✅ **Type Hints**: Full type annotations
+- ✅ **Unit Tests**: Comprehensive test coverage
+- ✅ **Documentation**: Complete API docs
+- ✅ **CI/CD**: Automated pipeline
+- ✅ **Docker**: Containerized deployment
+
+## 📝 License
+
+MIT License - see [LICENSE](LICENSE) file
+
+## 🤝 Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
 ---
 
-## 6. How Jenkins Runs Everything (Step by Step)
-
-1. **You trigger the Jenkins job** (manually or via schedule) and give a `RUN_DATE` (or leave it empty).
-2. **Jenkins checks out** this repo into its workspace.
-3. Jenkins **builds the Docker image** using `Dockerfile`.
-4. Jenkins **runs the container**, mounting the workspace and calling:
-
-   ```bash
-   python src/main_pipeline.py --run-date ${RUN_DATE}
-   ```
-
-5. The PySpark job:
-   - Reads `data/raw/zoom_car_events_yyyymmdd.json`.
-   - Validates and loads into staging tables.
-   - Applies transformations and merge logic.
-   - Writes updated Parquet tables into `data/final`.
-6. Jenkins (optionally) archives the `data/final` folder as build artifacts.
-7. Jenkins **cleans the workspace** with `cleanWs()` so your folders are empty at the end.
-
----
-
-## 7. Notes / Customization
-
-- If you want to change the raw file pattern or data schema, update:
-  - `src/config.py` (paths, file pattern)
-  - `src/process_data.py` (schema + validations)
-- If you later move to **Delta Lake** or **Databricks**, most PySpark logic can stay the same; you would mainly switch the write/merge code.
-
+**Built with industry best practices** 🚀

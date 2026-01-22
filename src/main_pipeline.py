@@ -18,14 +18,24 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    """
+    Main batch pipeline entry point.
+    Processes daily JSON file and creates final Parquet tables.
+    """
     args = parse_args()
     run_dt = parse_run_date(args.run_date)
-
-    # 1) Process raw daily JSON into staging
+    
+    print(f"Starting batch pipeline for date: {run_dt.strftime('%Y-%m-%d')}")
+    
+    # Step 1: Read JSON, validate, write to staging
+    print("Step 1: Processing raw data...")
     run_process_daily(run_dt)
-
-    # 2) Transform and merge into final tables
+    
+    # Step 2: Transform and merge into final tables
+    print("Step 2: Transforming and merging...")
     run_transform_and_merge(run_dt)
+    
+    print("✅ Batch pipeline completed")
 
 
 if __name__ == "__main__":

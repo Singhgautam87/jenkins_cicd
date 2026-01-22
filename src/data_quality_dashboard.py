@@ -6,7 +6,9 @@ import pandas as pd
 from pyspark.sql import functions as F
 
 from .utils import create_spark
-from . import config
+from .config import paths as config
+from .config.business_rules import VALID_BOOKING_STATUSES
+from .config.dq_config import BOOKINGS_DQ_CHECKS, CUSTOMERS_DQ_CHECKS, DQ_REPORTING
 
 
 def ensure_reports_dir() -> str:
@@ -45,7 +47,7 @@ def run_deequ_checks(spark) -> dict:
             .isComplete("customer_id")
             .isContainedIn(
                 "booking_status",
-                ["created", "in_progress", "completed", "cancelled"],
+                VALID_BOOKING_STATUSES,
             )
             .isNonNegative("booking_duration_minutes", hint="Duration should be >= 0")
         )

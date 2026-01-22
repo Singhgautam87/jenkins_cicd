@@ -3,29 +3,21 @@ from datetime import datetime
 from pyspark.sql import DataFrame, Window
 from pyspark.sql import functions as F
 
-from . import config
-from .utils import create_spark, normalize_phone_to_indian
+from .config import paths as config
+from .config.business_rules import DEDUP_RULES
+from .models import bookings as booking_model
+from .models import customers as customer_model
+from .utils import create_spark
 
 
 def transform_bookings(df: DataFrame) -> DataFrame:
-    df = df.withColumn("start_ts", F.to_timestamp("start_time"))
-    df = df.withColumn("end_ts", F.to_timestamp("end_time"))
-    df = df.withColumn(
-        "booking_duration_minutes",
-        (F.unix_timestamp("end_ts") - F.unix_timestamp("start_ts")) / 60.0,
-    )
-    return df
+    """Transform bookings using model logic."""
+    return booking_model.transform_booking(df)
 
 
 def transform_customers(df: DataFrame, run_date: datetime) -> DataFrame:
-    normalize_phone_udf = F.udf(normalize_phone_to_indian)
-
-    df = df.withColumn("phone_norm", normalize_phone_udf("phone"))
-    df = df.withColumn(
-        "customer_tenure_days",
-        F.datediff(F.lit(run_date.date()), F.col("signup_date_parsed")),
-    )
-    return df
+    """Transform customers using model logic."""
+    return customer_model.transform_customer(df, run_date)
 
 
 def read_if_exists(spark, path: str) -> DataFrame | None:
@@ -36,35 +28,58 @@ def read_if_exists(spark, path: str) -> DataFrame | None:
 
 
 def merge_bookings(spark) -> None:
+    """
+    Merge staging bookings into final table.
+    Logic: Remove cancelled, keep latest record per booking_id
+    """
     staging = read_if_exists(spark, config.BOOKINGS_STAGING_PATH)
     if staging is None:
+        print("No staging bookings found, skipping merge")
         return
 
     staging = transform_bookings(staging)
+    print(f"Staging bookings count: {staging.count()}")
 
     existing = read_if_exists(spark, config.BOOKINGS_FINAL_PATH)
     if existing is None:
         combined = staging
+        print("No existing bookings, using staging as final")
     else:
         combined = existing.unionByName(staging)
+        print(f"Combined count: {combined.count()}")
 
-    # Simulate Delta merge:
-    # - Remove cancelled bookings
-    # - Deduplicate on booking_id keeping the latest booking_date_parsed
+    # Business rule: cancelled bookings should be removed from final table
     filtered = combined.filter(F.lower(F.col("booking_status")) != "cancelled")
+    print(f"After removing cancelled: {filtered.count()}")
 
-    w = Window.partitionBy("booking_id").orderBy(F.col("booking_date_parsed").desc())
+    # Deduplicate: if same booking_id appears multiple times, keep the latest one
+    # Using config from business_rules
+    dedup_rule = DEDUP_RULES["bookings"]
+    order_col = dedup_rule["order_by"]
+    order_dir = dedup_rule["order_direction"]
+    
+    w = Window.partitionBy(dedup_rule["key"]).orderBy(
+        F.col(order_col).desc() if order_dir == "desc" else F.col(order_col).asc()
+    )
     deduped = filtered.withColumn("rn", F.row_number().over(w)).filter("rn = 1").drop("rn")
-
+    
+    print(f"Final bookings count: {deduped.count()}")
     deduped.write.mode("overwrite").parquet(config.BOOKINGS_FINAL_PATH)
+    print("✅ Bookings merge completed")
 
 
 def merge_customers(spark, run_date: datetime) -> None:
+    """
+    Merge staging customers into final table.
+    Upsert logic: if customer_id exists, keep the one with latest signup_date
+    """
     staging = read_if_exists(spark, config.CUSTOMERS_STAGING_PATH)
     if staging is None:
+        print("No staging customers found, skipping merge")
         return
 
     staging = transform_customers(staging, run_date)
+    print(f"Staging customers count: {staging.count()}")
 
     existing = read_if_exists(spark, config.CUSTOMERS_FINAL_PATH)
     if existing is None:
@@ -72,11 +87,21 @@ def merge_customers(spark, run_date: datetime) -> None:
     else:
         combined = existing.unionByName(staging)
 
-    # Upsert on customer_id: keep latest signup_date_parsed
-    w = Window.partitionBy("customer_id").orderBy(F.col("signup_date_parsed").desc())
+    # Upsert: keep latest customer record based on signup_date
+    # This handles cases where customer info gets updated
+    # Using config from business_rules
+    dedup_rule = DEDUP_RULES["customers"]
+    order_col = dedup_rule["order_by"]
+    order_dir = dedup_rule["order_direction"]
+    
+    w = Window.partitionBy(dedup_rule["key"]).orderBy(
+        F.col(order_col).desc() if order_dir == "desc" else F.col(order_col).asc()
+    )
     deduped = combined.withColumn("rn", F.row_number().over(w)).filter("rn = 1").drop("rn")
-
+    
+    print(f"Final customers count: {deduped.count()}")
     deduped.write.mode("overwrite").parquet(config.CUSTOMERS_FINAL_PATH)
+    print("✅ Customers merge completed")
 
 
 def run_transform_and_merge(run_date: datetime) -> None:

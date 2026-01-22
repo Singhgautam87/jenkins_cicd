@@ -82,7 +82,7 @@ def spark_to_postgres(df, table_name: str):
         db_cols = {
             'booking_id': 'booking_id',
             'customer_id': 'customer_id',
-            'booking_date_parsed': 'booking_date',
+            'booking_date': 'booking_date',
             'booking_status': 'booking_status',
             'start_time': 'start_time',
             'end_time': 'end_time',
@@ -104,11 +104,11 @@ def spark_to_postgres(df, table_name: str):
                     INSERT INTO bookings (
                         booking_id, customer_id, booking_date, booking_status,
                         start_time, end_time, booking_duration_minutes,
-                        car_type, pickup_city, booking_date_parsed
+                        car_type, pickup_city
                     ) VALUES (
                         :booking_id, :customer_id, :booking_date, :booking_status,
                         :start_time, :end_time, :booking_duration_minutes,
-                        :car_type, :pickup_city, :booking_date_parsed
+                        :car_type, :pickup_city
                     )
                     ON CONFLICT (booking_id) DO UPDATE SET
                         customer_id = EXCLUDED.customer_id,

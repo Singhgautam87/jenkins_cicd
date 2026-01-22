@@ -7,6 +7,11 @@ from typing import List, Pattern
 
 # Email validation regex
 EMAIL_REGEX: Pattern = re.compile(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$")
+PHONE_NORMALIZATION = {
+    'country_code': '+91',
+    'min_length': 10,
+    'max_length': 10
+}
 
 # Required fields for each entity
 REQUIRED_FIELDS = {

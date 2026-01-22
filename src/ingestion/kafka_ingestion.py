@@ -78,22 +78,40 @@ def spark_to_postgres(df, table_name: str):
     pandas_df = df.toPandas()
     
     # Map Spark column names to database column names
-    if table_name == "bookings":
-        db_cols = {
-            'booking_id': 'booking_id',
-            'customer_id': 'customer_id',
-            'booking_date': 'booking_date',
-            'booking_status': 'booking_status',
-            'start_time': 'start_time',
-            'end_time': 'end_time',
-            'booking_duration_minutes': 'booking_duration_minutes',
-            'car_type': 'car_type',
-            'pickup_city': 'pickup_city',
-        }
-        # Only select columns that exist in DataFrame
-        available_cols = [c for c in db_cols.keys() if c in pandas_df.columns]
-        pandas_df = pandas_df[available_cols]
-        pandas_df = pandas_df.rename(columns=db_cols)
+   if table_name == "bookings":
+    # Remove the db_cols mapping completely
+    # pandas_df = pandas_df[available_cols]
+    # pandas_df = pandas_df.rename(columns=db_cols)
+    
+    # Direct write with proper column handling
+    with engine.connect() as conn:
+        for _, row in pandas_df.iterrows():
+            row_dict = {k: (None if pd.isna(v) else v) for k, v in row.to_dict().items()}
+            
+            # Make sure booking_date exists
+            if 'booking_date' not in row_dict:
+                print(f"⚠️ Warning: booking_date missing in row: {row_dict}")
+                continue
+                
+            conn.execute(text("""
+                INSERT INTO bookings (
+                    booking_id, customer_id, booking_date, booking_status,
+                    start_time, end_time, booking_duration_minutes,
+                    car_type, pickup_city
+                ) VALUES (
+                    :booking_id, :customer_id, :booking_date, :booking_status,
+                    :start_time, :end_time, :booking_duration_minutes,
+                    :car_type, :pickup_city
+                )
+                ON CONFLICT (booking_id) DO UPDATE SET
+                    customer_id = EXCLUDED.customer_id,
+                    booking_status = EXCLUDED.booking_status,
+                    start_time = EXCLUDED.start_time,
+                    end_time = EXCLUDED.end_time,
+                    booking_duration_minutes = EXCLUDED.booking_duration_minutes,
+                    updated_at = CURRENT_TIMESTAMP
+            """), row_dict)
+        conn.commit()
         
         # Upsert using ON CONFLICT
         with engine.connect() as conn:

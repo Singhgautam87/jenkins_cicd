@@ -1,10 +1,12 @@
 """
 Real-time ingestion from Kafka, process and store in PostgreSQL.
 """
+from sqlalchemy import text
 from datetime import datetime
 from pyspark.sql import SparkSession
 from pyspark.sql.types import StructType, StructField, StringType, TimestampType, DateType
 import pandas as pd
+from pyspark.sql.functions import from_json, col
 
 from ..config.kafka_config import KAFKA_BOOTSTRAP_SERVERS, KAFKA_TOPIC_RAW_EVENTS
 from ..config.business_rules import BATCH_SIZES
@@ -20,8 +22,6 @@ def kafka_to_spark_df(spark: SparkSession, max_messages: int = None) -> tuple:
     Note: Spark's Kafka connector reads in batches, not truly streaming here.
     For real streaming, would use readStream instead of read.
     """
-    from pyspark.sql.functions import from_json, col
-    
     # Use configured batch size if not provided
     if max_messages is None:
         max_messages = BATCH_SIZES["kafka_max_messages"]
@@ -66,7 +66,7 @@ def spark_to_postgres(df, table_name: str):
     Converts to Pandas first (works for small-medium datasets).
     TODO: For large datasets, might need to use JDBC directly from Spark
     """
-    from sqlalchemy import text
+  
     
     row_count = df.count()
     if row_count == 0:
@@ -78,18 +78,18 @@ def spark_to_postgres(df, table_name: str):
     pandas_df = df.toPandas()
     
     # Map Spark column names to database column names
-   if table_name == "bookings":
+    if table_name == "bookings":
     # Remove the db_cols mapping completely
     # pandas_df = pandas_df[available_cols]
     # pandas_df = pandas_df.rename(columns=db_cols)
     
-    # Direct write with proper column handling
+        # Direct write with proper column handling
         with engine.connect() as conn:
             for _, row in pandas_df.iterrows():
-            row_dict = {k: (None if pd.isna(v) else v) for k, v in row.to_dict().items()}
+                row_dict = {k: (None if pd.isna(v) else v) for k, v in row.to_dict().items()}
             
             # Make sure booking_date exists
-                if 'booking_date' not in row_dict:
+            if 'booking_date' not in row_dict:
                 print(f"⚠️ Warning: booking_date missing in row: {row_dict}")
                 continue
                 

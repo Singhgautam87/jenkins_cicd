@@ -89,9 +89,9 @@ def spark_to_postgres(df, table_name: str):
                 row_dict = {k: (None if pd.isna(v) else v) for k, v in row.to_dict().items()}
             
             # Make sure booking_date exists
-            if 'booking_date' not in row_dict:
-                print(f"⚠️ Warning: booking_date missing in row: {row_dict}")
-                continue
+                if 'booking_date' not in row_dict:
+                    print(f"⚠️ Warning: booking_date missing in row: {row_dict}")
+                    continue
                 
                 conn.execute(text("""
                     INSERT INTO bookings (

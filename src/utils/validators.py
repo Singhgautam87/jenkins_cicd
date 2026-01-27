@@ -42,8 +42,8 @@ def normalize_phone_to_indian(phone: Optional[str]) -> Optional[str]:
     digits = re.sub(r"\D", "", digits)
     
     country_code = PHONE_NORMALIZATION["country_code"].replace("+", "")
-    min_digits = PHONE_NORMALIZATION["min_digits"]
-    max_digits = PHONE_NORMALIZATION["max_digits"]
+    min_digits = PHONE_NORMALIZATION.get("min_digits", 10)
+    max_digits = PHONE_NORMALIZATION.get("max_digits", 10)
     
     # Handle different Indian number formats
     if digits.startswith(country_code) and len(digits) == 12:

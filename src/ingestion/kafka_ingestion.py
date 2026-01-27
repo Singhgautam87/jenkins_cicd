@@ -58,16 +58,11 @@ def kafka_to_spark_df(spark: SparkSession, max_messages: int = None) -> tuple:
     customers_df = validate_and_clean_customers(parsed_df)
     
     return bookings_df, customers_df
-
-
 def spark_to_postgres(df, table_name: str):
     """
     Write Spark DataFrame to PostgreSQL table with upsert logic.
     Converts to Pandas first (works for small-medium datasets).
-    TODO: For large datasets, might need to use JDBC directly from Spark
     """
-  
-    
     row_count = df.count()
     if row_count == 0:
         print(f"⚠️ No data to write to {table_name}")
@@ -77,47 +72,23 @@ def spark_to_postgres(df, table_name: str):
     engine = get_engine()
     pandas_df = df.toPandas()
     
-    # Map Spark column names to database column names
+    # Handle bookings table
     if table_name == "bookings":
-    # Remove the db_cols mapping completely
-    # pandas_df = pandas_df[available_cols]
-    # pandas_df = pandas_df.rename(columns=db_cols)
-    
-        # Direct write with proper column handling
+        # FIX: Rename booking_date_parsed to booking_date if exists
+        if 'booking_date_parsed' in pandas_df.columns and 'booking_date' not in pandas_df.columns:
+            pandas_df['booking_date'] = pandas_df['booking_date_parsed']
+            pandas_df = pandas_df.drop('booking_date_parsed', axis=1)
+        
+        # Upsert logic
         with engine.connect() as conn:
             for _, row in pandas_df.iterrows():
                 row_dict = {k: (None if pd.isna(v) else v) for k, v in row.to_dict().items()}
-            
-            # Make sure booking_date exists
+                
+                # Make sure booking_date exists
                 if 'booking_date' not in row_dict:
-                    print(f"⚠️ Warning: booking_date missing in row: {row_dict}")
+                    print(f"⚠️ Warning: booking_date missing in row, skipping...")
                     continue
                 
-                conn.execute(text("""
-                    INSERT INTO bookings (
-                        booking_id, customer_id, booking_date, booking_status,
-                        start_time, end_time, booking_duration_minutes,
-                        car_type, pickup_city
-                    ) VALUES (
-                        :booking_id, :customer_id, :booking_date, :booking_status,
-                        :start_time, :end_time, :booking_duration_minutes,
-                        :car_type, :pickup_city
-                    )
-                    ON CONFLICT (booking_id) DO UPDATE SET
-                        customer_id = EXCLUDED.customer_id,
-                        booking_status = EXCLUDED.booking_status,
-                        start_time = EXCLUDED.start_time,
-                        end_time = EXCLUDED.end_time,
-                        booking_duration_minutes = EXCLUDED.booking_duration_minutes,
-                        updated_at = CURRENT_TIMESTAMP
-                """), row_dict)
-            conn.commit()
-        
-        # Upsert using ON CONFLICT
-        with engine.connect() as conn:
-            for _, row in pandas_df.iterrows():
-                # Handle NaN values (convert to None for SQL)
-                row_dict = {k: (None if pd.isna(v) else v) for k, v in row.to_dict().items()}
                 conn.execute(text("""
                     INSERT INTO bookings (
                         booking_id, customer_id, booking_date, booking_status,
@@ -177,7 +148,6 @@ def spark_to_postgres(df, table_name: str):
         raise ValueError(f"Unknown table name: {table_name}")
     
     print(f"✅ Successfully wrote {len(pandas_df)} rows to {table_name}")
-
 
 def run_realtime_etl(spark: SparkSession, run_date: datetime):
     """

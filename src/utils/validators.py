@@ -35,7 +35,7 @@ def normalize_phone_to_indian(phone: Optional[str]) -> Optional[str]:
     
     # Remove characters as per config
     digits = phone
-    for char in PHONE_NORMALIZATION["remove_chars"]:
+    for char in PHONE_NORMALIZATION.get("remove_chars", [" ", "-", "(", ")", "+", "."]):
         digits = digits.replace(char, "")
     
     # Extract only digits
